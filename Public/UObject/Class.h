@@ -2466,9 +2466,10 @@ struct ICppClassTypeInfo
 	virtual bool IsAbstract() const = 0;
 };
 
-
+//类在Cpp里的类型信息，用一个结构是为了将来也许还会添加别的字段
 struct FCppClassTypeInfoStatic
 {
+	//是否抽象类
 	bool bIsAbstract;
 };
 
@@ -2524,7 +2525,9 @@ struct COREUOBJECT_API FImplementedInterface
 /** A struct that maps a string name to a native function */
 struct FNativeFunctionLookup
 {
+	//函数名字
 	FName Name;
+	//函数指针
 	FNativeFuncPtr Pointer;
 
 	FNativeFunctionLookup(FName InName, FNativeFuncPtr InPointer)
@@ -2542,10 +2545,12 @@ namespace EIncludeSuperFlag
 		IncludeSuper
 	};
 }
-
+//类里的函数链接信息，一个函数名字对应一个UFunction对象
 struct FClassFunctionLinkInfo
 {
+	//获得UFunction对象的函数指针回调
 	UFunction* (*CreateFuncPtr)();
+	//函数的名字
 	const char* FuncNameUTF8;
 };
 

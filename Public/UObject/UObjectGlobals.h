@@ -2181,6 +2181,7 @@ class FFieldClass;
 /// @cond DOXYGEN_IGNORE
 namespace UE4CodeGen_Private
 {
+	//属性的类型
 	enum class EPropertyGenFlags : uint32
 	{
 		None              = 0x00,
@@ -2235,28 +2236,38 @@ namespace UE4CodeGen_Private
 	};
 
 #if WITH_METADATA
+	//枚举元数据
 	struct FMetaDataPairParam
 	{
 		const char* NameUTF8;
 		const char* ValueUTF8;
 	};
 #endif
-
+	//枚举项
 	struct FEnumeratorParam
 	{
+		//枚举项的名字
 		const char*               NameUTF8;
+		//枚举项的值
 		int64                     Value;
 	};
 
 	// This is not a base class but is just a common initial sequence of all of the F*PropertyParams types below.
 	// We don't want to use actual inheritance because we want to construct aggregated compile-time tables of these things.
+	//属性参数基类
 	struct FPropertyParamsBase
 	{
+		//属性的名字
 		const char*    NameUTF8;
+		//属性的网络复制通知函数名字
 		const char*       RepNotifyFuncUTF8;
+		//属性生成的UProperty属性标志，标识这个属性的特征，CPF_XXX那些宏
 		EPropertyFlags    PropertyFlags;
+		//属性的类型
 		EPropertyGenFlags Flags;
+		//属性生成的UProperty对象标志，标识这个UProperty对象的特征，RF_XXX那些宏
 		EObjectFlags   ObjectFlags;
+		//属性有可能是个数组，数组的长度，默认是1
 		int32          ArrayDim;
 	};
 
@@ -2268,9 +2279,11 @@ namespace UE4CodeGen_Private
 		EPropertyGenFlags Flags;
 		EObjectFlags   ObjectFlags;
 		int32          ArrayDim;
+		//在结构或类中的内存偏移，可以理解为成员变量指针（成员变量指针其实本质上就是从对象内存起始位置的偏移）
 		int32          Offset;
 	};
 
+	//通用的属性参数
 	struct FGenericPropertyParams // : FPropertyParamsBaseWithOffset
 	{
 		const char*      NameUTF8;
@@ -2286,6 +2299,7 @@ namespace UE4CodeGen_Private
 #endif
 	};
 
+	//枚举类型属性参数
 	struct FBytePropertyParams // : FPropertyParamsBaseWithOffset
 	{
 		const char*      NameUTF8;
@@ -2295,6 +2309,7 @@ namespace UE4CodeGen_Private
 		EObjectFlags     ObjectFlags;
 		int32            ArrayDim;
 		int32            Offset;
+		//定义的枚举对象回调
 		UEnum*         (*EnumFunc)();
 #if WITH_METADATA
 		const FMetaDataPairParam*           MetaDataArray;
@@ -2319,6 +2334,7 @@ namespace UE4CodeGen_Private
 #endif
 	};
 
+	//对象引用类型属性参数
 	struct FObjectPropertyParams // : FPropertyParamsBaseWithOffset
 	{
 		const char*      NameUTF8;
@@ -2328,6 +2344,7 @@ namespace UE4CodeGen_Private
 		EObjectFlags     ObjectFlags;
 		int32            ArrayDim;
 		int32            Offset;
+		//用于获取该属性定义类型的函数指针回调
 		UClass*        (*ClassFunc)();
 #if WITH_METADATA
 		const FMetaDataPairParam*           MetaDataArray;
@@ -2497,6 +2514,7 @@ namespace UE4CodeGen_Private
 	};
 
 	// These property types don't add new any construction parameters to their base property
+	//一些普通常用的数值类型就通过这个类型定义别名了
 	typedef FGenericPropertyParams FInt8PropertyParams;
 	typedef FGenericPropertyParams FInt16PropertyParams;
 	typedef FGenericPropertyParams FIntPropertyParams;
@@ -2515,58 +2533,98 @@ namespace UE4CodeGen_Private
 	typedef FObjectPropertyParams  FWeakObjectPropertyParams;
 	typedef FObjectPropertyParams  FLazyObjectPropertyParams;
 	typedef FObjectPropertyParams  FSoftObjectPropertyParams;
-
+	//函数参数
 	struct FFunctionParams
 	{
+		//所属于的外部对象，一般是外部的UClass*对象
 		UObject*                          (*OuterFunc)();
+		//UFunction的基类，一般为nullptr
 		UFunction*                        (*SuperFunc)();
+		//函数名
 		const char*                         NameUTF8;
 		const char*                         OwningClassName;
 		const char*                         DelegateName;
+		//函数的参数返回值包结构的大小
 		SIZE_T                              StructureSize;
+		//函数的参数和返回值字段数组
 		const FPropertyParamsBase* const*   PropertyArray;
+		//函数的参数和返回值字段数组大小
 		int32                               NumProperties;
 		EObjectFlags                        ObjectFlags;
+		//函数本身的特征
 		EFunctionFlags                      FunctionFlags;
+		// 网络间的RPC Id
 		uint16                              RPCId;
+		//网络间的RPC Response Id
 		uint16                              RPCResponseId;
 #if WITH_METADATA
+		//元数据数组
 		const FMetaDataPairParam*           MetaDataArray;
 		int32                               NumMetaData;
 #endif
 	};
 
+	//枚举的元数据参数信息
 	struct FEnumParams
 	{
+		//获取Outer对象的函数指针回调，用于获取所属于的Package
 		UObject*                  (*OuterFunc)();
+		//获取自定义显示名字的回调，一般是nullptr，就是默认规则生成的名字
 		FText                     (*DisplayNameFunc)(int32);
+		//枚举的名字
 		const char*                 NameUTF8;
+		//C++里的类型名字，一般是等同于NameUTF8的，但有时定义名字和反射的名字可以不一样
 		const char*                 CppTypeUTF8;
+		//枚举项数组
 		const FEnumeratorParam*     EnumeratorParams;
 		int32                       NumEnumerators;
+		//UEnum对象的标志
 		EObjectFlags                ObjectFlags;
 		EEnumFlags                  EnumFlags;
+		//是否动态，一般是非动态的
 		EDynamicType                DynamicType;
-		uint8                       CppForm; // this is of type UEnum::ECppForm
+		/*
+			CppForm指定这个枚举是怎么定义的，用来在之后做更细的处理。
+			enum class ECppForm
+			{
+				Regular,    //常规的enum MyEnum{}这样定义
+				Namespaced, //MyEnum之外套一层namespace的定义
+				EnumClass   //enum class定义的
+			};
+		*/
+		uint8                       CppForm;
 #if WITH_METADATA
+		//元数据数组
 		const FMetaDataPairParam*   MetaDataArray;
 		int32                       NumMetaData;
 #endif
 	};
 
+	//结构参数
 	struct FStructParams
 	{
+		//所属于的Package
 		UObject*                          (*OuterFunc)();
+		//该结构的基类，没有的话为nullptr
 		UScriptStruct*                    (*SuperFunc)();
-		void*                             (*StructOpsFunc)(); // really returns UScriptStruct::ICppStructOps*
+		// really returns UScriptStruct::ICppStructOps*，结构的构造分配的辅助操作类
+		void*                             (*StructOpsFunc)();
+		//结构名字
 		const char*                         NameUTF8;
+		//结构的大小，就是sizeof(FMyStruct)，用以后续分配内存时候用
 		SIZE_T                              SizeOf;
+		//结构的内存对齐，就是alignof(FMyStruct)，用以后续分配内存时候用
 		SIZE_T                              AlignOf;
+		//包含的属性数组
 		const FPropertyParamsBase* const*   PropertyArray;
+		//结构体字段的数量
 		int32                               NumProperties;
+		//结构UScriptStruct*的对象特征
 		EObjectFlags                        ObjectFlags;
+		// EStructFlags该结构的本来特征
 		uint32                              StructFlags; // EStructFlags
 #if WITH_METADATA
+		//元数据数组
 		const FMetaDataPairParam*           MetaDataArray;
 		int32                               NumMetaData;
 #endif
@@ -2574,40 +2632,60 @@ namespace UE4CodeGen_Private
 
 	struct FPackageParams
 	{
+		//包名字
 		const char*                        NameUTF8;
+		//依赖的对象列表
 		UObject*                  (*const *SingletonFuncArray)();
 		int32                              NumSingletons;
-		uint32                             PackageFlags; // EPackageFlags
+		// EPackageFlags包的特征
+		uint32                             PackageFlags;
+		//内容的CRC,CRC的部分后续介绍
 		uint32                             BodyCRC;
+		//声明部分的CRC
 		uint32                             DeclarationsCRC;
 #if WITH_METADATA
+		//元数据数组
 		const FMetaDataPairParam*          MetaDataArray;
 		int32                              NumMetaData;
 #endif
 	};
 
+	//实现的接口参数
 	struct FImplementedInterfaceParams
 	{
+		//外部所属于的UInterface对象
 		UClass* (*ClassFunc)();
+		//在UMyClass里的实现的IMyInterface的虚函数表地址偏移
 		int32     Offset;
+		//是否在蓝图中实现
 		bool      bImplementedByK2;
 	};
 
+	//类参数
 	struct FClassParams
 	{
+		//获得UClass*对象的函数指针
 		UClass*                                   (*ClassNoRegisterFunc)();
+		//配置文件名字，有些类可以从配置文件从加载数据
 		const char*                                 ClassConfigNameUTF8;
+		//Cpp里定义的信息
 		const FCppClassTypeInfoStatic*              CppClassInfo;
+		//获取依赖对象的函数指针数组，一般是需要前提构造的基类，模块UPackage对象
 		UObject*                           (*const *DependencySingletonFuncArray)();
+		//链接的函数数组
 		const FClassFunctionLinkInfo*               FunctionLinkArray;
+		//类里定义的成员变量数组
 		const FPropertyParamsBase* const*           PropertyArray;
+		//实现的接口信息数组
 		const FImplementedInterfaceParams*          ImplementedInterfaceArray;
 		int32                                       NumDependencySingletons;
 		int32                                       NumFunctions;
 		int32                                       NumProperties;
 		int32                                       NumImplementedInterfaces;
-		uint32                                      ClassFlags; // EClassFlags
+		//类特征
+		uint32                                      ClassFlags;
 #if WITH_METADATA
+		//元数据数组
 		const FMetaDataPairParam*                   MetaDataArray;
 		int32                                       NumMetaData;
 #endif

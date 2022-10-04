@@ -3,12 +3,14 @@
 // Reflection mirrors of C++ structs defined in Core or CoreUObject, those modules are not parsed by the Unreal Header Tool.
 // The documentation comments here are only for use in the editor tooltips, and is ignored for the API docs.
 // More complete documentation will be found in the files that have the full class definition, listed below.
+//这个文件的目的就是为了把CoreUObject模块里的一些基础类型喂给UHT来生成类型的元数据信息。
 
 #pragma once
 
 #if CPP
 
 // Include the real definitions of the noexport classes below to allow the generated cpp file to compile.
+//包含一些头文件来让NoExportTypes.gen.cpp可以编译通过
 
 #include "PixelFormat.h"
 
@@ -59,6 +61,8 @@
 /**
  * Determines case sensitivity options for string comparisons. 
  * @note Mirrored from Engine\Source\Runtime\Core\Public\Containers\UnrealString.h
+ * 
+ * 这里面的部分是不参与编译的，所以不会产生定义冲突，但是却可以让UHT分析，因为UHT只是个文本分析器而已。
  */
 UENUM()
 namespace ESearchCase
@@ -1637,6 +1641,8 @@ struct FAssetData
 
 /**
  * Direct base class for all UE4 objects
+ * UObject的声明，C++的内容其实不重要，重要的是让UHT分析得到些什么信息
+ * 
  * @note The full C++ class is located here: Engine\Source\Runtime\CoreUObject\Public\UObject\Object.h
  */
 UCLASS(abstract, noexport)

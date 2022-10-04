@@ -101,12 +101,16 @@ COREUOBJECT_API void InitializePrivateStaticClass(
 	/* No recursive ::StaticClass calls allowed. Setup extras. */
 	if (TClass_Super_StaticClass != TClass_PrivateStaticClass)
 	{
+		//1、设定类型的SuperStruct
 		TClass_PrivateStaticClass->SetSuperStruct(TClass_Super_StaticClass);
 	}
 	else
 	{
+		//UObject无基类
 		TClass_PrivateStaticClass->SetSuperStruct(NULL);
 	}
+
+	//2、设定Outer类类型
 	TClass_PrivateStaticClass->ClassWithin = TClass_WithinClass_StaticClass;
 
 	// Register the class's dependencies, then itself.
@@ -114,6 +118,7 @@ COREUOBJECT_API void InitializePrivateStaticClass(
 	if (!TClass_PrivateStaticClass->HasAnyFlags(RF_Dynamic))
 	{
 		// Defer
+		//3、调用UObjectBase::Register()对每个UClass*开始注册
 		TClass_PrivateStaticClass->Register(PackageName, Name);
 	}
 	else
@@ -5152,6 +5157,7 @@ void UClass::AddNativeFunction(const ANSICHAR* InName, FNativeFuncPtr InPointer)
 	new(NativeFunctionLookupTable) FNativeFunctionLookup(InFName,InPointer);
 }
 
+//这步操作这是简单的往UClass* 里添加Native函数的数据
 void UClass::AddNativeFunction(const WIDECHAR* InName, FNativeFuncPtr InPointer)
 {
 	FName InFName(InName);
@@ -5170,6 +5176,14 @@ void UClass::AddNativeFunction(const WIDECHAR* InName, FNativeFuncPtr InPointer)
 		}
 	}
 #endif
+	//NativeFunctionLookupTable是在UClass里的一个成员变量
+	/*
+	class COREUOBJECT_API UClass : public UStruct
+	{
+	public:
+		TArray<FNativeFunctionLookup> NativeFunctionLookupTable;
+	}
+	*/
 	new(NativeFunctionLookupTable)FNativeFunctionLookup(InFName, InPointer);
 }
 
@@ -5464,7 +5478,25 @@ void GetPrivateStaticClassBody(
 
 	if (!bIsDynamic)
 	{
+		//
+		/*
+		【1、分配内存】
+		GUObjectAllocator是全局的内存分配器，分配了一块内存来存放UClass对象。
+		关于存储的内容后续再说，这里理解为返回一块内存就可。
+		
+		ReturnClass是引用，这里一赋值，就代表外面static的PrivateStaticClass就有值了。
+		所以就算这个GetPrivateStaticClassBody函数还没返回，
+		但是如果去访问UMyClass::StaticClass()也是会立即返回这个值的。
+		*/
 		ReturnClass = (UClass*)GUObjectAllocator.AllocateUObject(sizeof(UClass), alignof(UClass), true);
+		/*
+		【2、调用UClass的构造函数】
+		这里的EC_StaticConstructor只是个标记用来指定调用特定的UClass构造函数重载版本。
+		该构造函数内只是简单的成员变量赋值，并没有什么特别的。
+		
+		先分配内存，然后调用UClass构造函数进行构造的原因：
+		UObject的内存都是统一管理的，所以应该由GUObjectAllocator来分配，不能像标准C++那样直接new出来一个。
+		*/
 		ReturnClass = ::new (ReturnClass)
 			UClass
 			(
@@ -5503,15 +5535,26 @@ void GetPrivateStaticClassBody(
 			);
 		check(ReturnClass);
 	}
-	InitializePrivateStaticClass(
+	/*
+	【3、初始化UClass*对象】
+	InitializePrivateStaticClass调用的时候，
+	InSuperClassFn()和InWithinClassFn()是会先被调用的，
+	所以其会先触发Super::StaticClass()和WithinClass::StaticClass()，再会堆栈式的加载前置的类型。
+	*/
+	InitializePrivateStaticClass
+	(
 		InSuperClassFn(),
 		ReturnClass,
 		InWithinClassFn(),
 		PackageName,
 		Name
-		);
-
-	// Register the class's native functions.
+	);
+	/*
+	* Register the class's native functions.
+	【4、注册Native函数到UClass中去】
+	RegisterNativeFunc()就是上文的StaticRegisterNativesUMyClass，在此刻调用，用来向UClass里添加Native函数。
+	Native函数指的是在C++有函数体实现的函数，而蓝图中的函数和BlueprintImplementableEvent的函数就不是Native函数。
+	*/
 	RegisterNativeFunc();
 }
 

@@ -1955,13 +1955,15 @@ void CollectGarbageInternal(EObjectFlags KeepFlags, bool bPerformFullPurge)
 	GNumAttemptsSinceLastGC = 0;
 
 	// Flush streaming before GC if requested
+	// 如果需要的话就在GC前刷新流
 	if (GFlushStreamingOnGC)
 	{
 		if (IsAsyncLoading())
 		{
 			UE_LOG(LogGarbage, Log, TEXT("CollectGarbageInternal() is flushing async loading"));
 		}
-		FGCCSyncObject::Get().GCUnlock();
+		//获得GGarbegeCollectionGardenCritical锁，并调用FlushAsyncLoading来保证所有的异步加载已完成
+		FGCCSyncObject::Get().GCUnlock();		
 		FlushAsyncLoading();
 		FGCCSyncObject::Get().GCLock();
 	}
@@ -1982,6 +1984,7 @@ void CollectGarbageInternal(EObjectFlags KeepFlags, bool bPerformFullPurge)
 		// off yet since the last call to garbage collection.
 		if (GObjIncrementalPurgeIsInProgress || GObjPurgeIsRequired)
 		{
+			// 确保增量清除已经完成，否则做一个完全清除来确保上次垃圾回收标记的对象完全被清除
 			IncrementalPurgeGarbage(false);
 			FMemory::Trim();
 		}
@@ -2060,6 +2063,7 @@ void CollectGarbageInternal(EObjectFlags KeepFlags, bool bPerformFullPurge)
 		}
 
 		// Destroy all pending delete linkers
+		// 删除所有待删除的LinerLoad
 		DeleteLoaders();
 
 		// Trim allocator memory
@@ -2140,16 +2144,18 @@ bool UnhashUnreachableObjects(bool bUseTimeLimit, float TimeLimit)
 	// Return true if time limit has been reached
 	return bTimeLimitReached;
 }
-
+//GC入口
 void CollectGarbage(EObjectFlags KeepFlags, bool bPerformFullPurge)
 {
 	// No other thread may be performing UObject operations while we're running
+	// 线程锁（执行GC时不允许其他线程操作UObject）
 	AcquireGCLock();
 
-	// Perform actual garbage collection
+	// Perform actual garbage collection（真正执行垃圾回收的操作）
 	CollectGarbageInternal(KeepFlags, bPerformFullPurge);
 
 	// Other threads are free to use UObjects
+	// GC执行完毕，释放线程锁
 	ReleaseGCLock();
 }
 

@@ -1696,9 +1696,13 @@ public: \
 
 // Register a class at startup time.
 #define IMPLEMENT_CLASS(TClass, TClassCrc) \
-	/*延迟注册*/\
+	/*【延迟注册1】
+	本质上是先转发到UClassCompiledInDefer()函数，
+	然后通过GetDeferredClassRegistration()函数
+	添加到一个静态的TArray<FFieldCompiledInInfo*>中进行登记
+	*/\
 	static TClassCompiledInDefer<TClass> AutoInitialize##TClass(TEXT(#TClass), sizeof(TClass), TClassCrc); \
-	/*.h里声明的实现，StaticClas()内部就是调用该函数*/\
+	/*真正用于获取UClass*的函数,在.generated.h里声明，StaticClass()内部会调用该函数*/\
 	UClass* TClass::GetPrivateStaticClass() \
 	{ \
 		/*又一次static lazy*/\

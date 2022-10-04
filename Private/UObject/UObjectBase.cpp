@@ -48,7 +48,9 @@ bool UObjectInitialized()
 /** Objects to automatically register once the object system is ready.					*/
 struct FPendingRegistrantInfo
 {
+	//对象名字
 	const TCHAR*	Name;
+	//所属包的名字
 	const TCHAR*	PackageName;
 	FPendingRegistrantInfo(const TCHAR* InName,const TCHAR* InPackageName)
 		:	Name(InName)
@@ -56,6 +58,7 @@ struct FPendingRegistrantInfo
 	{}
 	static TMap<UObjectBase*, FPendingRegistrantInfo>& GetMap()
 	{
+		//用对象指针做Key，这样才可以通过对象地址获得其名字信息，这个时候UClass对象本身其实还没有名字，要等之后的注册才能设置进去
 		static TMap<UObjectBase*, FPendingRegistrantInfo> PendingRegistrantInfo;
 		return PendingRegistrantInfo;
 	}
@@ -65,14 +68,18 @@ struct FPendingRegistrantInfo
 /** Objects to automatically register once the object system is ready.					*/
 struct FPendingRegistrant
 {
+	//对象指针，用该值去PendingRegistrants里查找名字。
 	UObjectBase*	Object;
+	//链表下一个节点
 	FPendingRegistrant*	NextAutoRegister;
 	FPendingRegistrant(UObjectBase* InObject)
 	:	Object(InObject)
 	,	NextAutoRegister(NULL)
 	{}
 };
+//全局链表头
 static FPendingRegistrant* GFirstPendingRegistrant = NULL;
+//全局链表尾
 static FPendingRegistrant* GLastPendingRegistrant = NULL;
 
 #if USE_PER_MODULE_UOBJECT_BOOTSTRAP
@@ -454,13 +461,49 @@ static FAutoConsoleCommand DumpPendingUObjectModulesCmd(
 
 #endif
 
-/** Enqueue the registration for this object. */
+/** 
+Enqueue the registration for this object. 
+该函数比较简单，只是简单的先记录一下信息到一个全局单例Map里和一个全局链表里
+
+1、为何该函数先记录一下信息？
+
+	因为UClass的注册分成了多步，在static初始化的时候（连main都没进去呢），
+	甚至到后面CoreUObject模块加载的时候，
+	UObject对象分配索引的机制（GUObjectAllocator和GUObjectArray）还没有初始化完毕，
+	因此这个时候如果走下一步去创建各种UProperty、UFunction或UPackage是不合适，
+	创建出来了也没有合适的地方来保存索引。
+	所以，在最开始的时候，只能先简单的创建出各UClass*对象（简单到对象的名字都还没有设定，更何况填充里面的属性和方法了），
+	先在内存里把这些UClass*对象记录一下，等后续对象的存储结构准备好了，
+	就可以把这些UClass*对象再拉出来继续构造了。
+	在后续操作中这些对象会被消费到（初始化对象存储机制的函数调用是InitUObject()、继续构造的操作是在ProcessNewlyLoadedUObjects()里
+
+2、记录信息为何需要一个TMap加一个链表？
+
+	我们可以看到，为了记录信息，明明是用一个数据结构就能保存的（源码里的两个数据结构里的数据数量也是1:1的），为何要麻烦的设置成这样。
+	原因有三：
+	1）是快速查找的需要。
+		在后续的别的代码（获取CDO等）里也会经常调用到UObjectForceRegistration(NewClass)，
+		因此常常有通过一个对象指针来查找注册信息的需要，
+		这个时候为了性能就必须要用字典类的数据结构才能做到O(1)的查找。
+	2）顺序注册的需要。
+		字典类的数据结构一般来说内部为了hash，数据遍历取出的顺序无法保证和添加的顺序一致，
+		而我们又想要遵循添加的顺序来注册
+		（很合理，早添加进来的是早加载的，是更底层的，处在依赖顺序的前提位置。我们前面的SuperClass和WithinClass的访问也表明了这一点），
+		因此就需要另一个顺序数据结构来辅助。
+	3）那为什么是链表而不是数组呢？
+		链表比数组优势的地方也只在于可以快速的中间插入。
+		但是UE源码里也没有这个方面的体现，所以其实二者都可以。
+		实际上在源码里把注册结构改为用数组也依然可以正常工作。
+*/
 void UObjectBase::Register(const TCHAR* PackageName,const TCHAR* InName)
 {
-	TMap<UObjectBase*, FPendingRegistrantInfo>& PendingRegistrants = FPendingRegistrantInfo::GetMap();
-
-	FPendingRegistrant* PendingRegistration = new FPendingRegistrant(this);
+	//1、添加到全局单例Map里，用对象指针做Key，Value是对象的名字和所属包的名字。
+	TMap<UObjectBase*, FPendingRegistrantInfo>& PendingRegistrants = FPendingRegistrantInfo::GetMap();	
 	PendingRegistrants.Add(this, FPendingRegistrantInfo(InName, PackageName));
+
+	//2、将本对象添加到全局链表里（这里与上一句换了下位置）
+	//2-1、使用该对象构造一个链表节点
+	FPendingRegistrant* PendingRegistration = new FPendingRegistrant(this);
 
 #if USE_PER_MODULE_UOBJECT_BOOTSTRAP
 	if (FName(PackageName) != FName("/Script/CoreUObject"))
@@ -474,10 +517,12 @@ void UObjectBase::Register(const TCHAR* PackageName,const TCHAR* InName)
 	{
 		if (GLastPendingRegistrant)
 		{
+			//2-2、 全局链表尾非空，直接设置全局链表为给该链表节点
 			GLastPendingRegistrant->NextAutoRegister = PendingRegistration;
 		}
 		else
 		{
+			//2-2、全局链表尾为空，检查全局链表头是否有效，如果有效设置全局链表头为该链表节点，否则触发断言
 			check(!GFirstPendingRegistrant);
 			GFirstPendingRegistrant = PendingRegistration;
 		}
@@ -734,7 +779,7 @@ FString UObjectBase::RemoveClassPrefix(const TCHAR* ClassName)
 	return NameWithoutPrefix;
 }
 
-//收集类名字，类大小，CRC信息， 并把类信息添加到静态数组HotReloadClasses中
+//收集类名字，类大小，CRC信息， 并把类信息添加到静态数组DeferredClassRegistration中
 void UClassCompiledInDefer(FFieldCompiledInInfo* ClassInfo, const TCHAR* Name, SIZE_T ClassSize, uint32 Crc)
 {
 	const FName CPPClassName = Name;
